@@ -5,6 +5,7 @@ using MC_server.GameRoom.Managers;
 using MC_server.GameRoom.Service;
 using MC_server.GameRoom.Utils;
 using MC_server.GameRoom.Communication;
+using System.Collections.Concurrent;
 
 namespace MC_server.GameRoom.Handlers
 {
@@ -18,7 +19,7 @@ namespace MC_server.GameRoom.Handlers
         private readonly UserTcpService _userTcpService;
 
         // GameSession에 대한 동기화 제어를 위해 사용됨 -> 다수의 스레드가 동시에 GameSession을 읽거나 수정하려고 할 때 충돌을 방지
-        private readonly object _sessionLock = new object();
+        private readonly ConcurrentDictionary<int, object> _roomLocks = new();
 
         public GameRoomHandler(GameRoomManager gameRoomManager, ClientManager clientManager, ClientMessageSender clientMessageSender, BroadcastMessageSender broadcastMessageSender, UserTcpService userTcpService)
         {
@@ -27,6 +28,11 @@ namespace MC_server.GameRoom.Handlers
             _clientMessageSender = clientMessageSender ?? throw new ArgumentNullException(nameof(clientMessageSender));
             _broadcastMessageSender = broadcastMessageSender ?? throw new ArgumentNullException(nameof(broadcastMessageSender));
             _userTcpService = userTcpService ?? throw new ArgumentNullException(nameof(userTcpService));
+        }
+
+        private object GetRoomLock(int roomId)
+        {
+            return _roomLocks.GetOrAdd(roomId, _ => new object());
         }
 
         public async Task HandleGameRoomAsync(TcpClient client)
@@ -96,7 +102,6 @@ namespace MC_server.GameRoom.Handlers
             try
             {
                 Console.WriteLine($"Join User ID: {joinRequest.UserId}");
-                Console.WriteLine($"Join Client ID: {client.Client.RemoteEndPoint}");
 
                 // 1. 유저가 해당 룸에 Join 시 해당 룸에 유저 정보 등록
                 await _clientManager.AddClient(client, joinRequest.UserId, joinRequest.RoomId);
@@ -112,19 +117,11 @@ namespace MC_server.GameRoom.Handlers
                 foreach (var gameUserClient in clientsInRoom)
                 {
                     var gameUser = _clientManager.GetGameUser(gameUserClient);
-                    _clientManager.UpdateGameUser(client, "currentPayout", GameUserStateUtils.CalculatePayout(gameUser, gameSession));
+                    _clientManager.UpdatePayout(gameUserClient, gameSession);
                 }
 
                 // 5. 유저 상태 브로드캐스트
                 await _broadcastMessageSender.BroadcastUserState(joinRequest.RoomId);
-
-                // 6. 요청 클라이언트에게 게임 상태 응답 전송
-                var gameState = new GameState
-                {
-                    TotalJackpotAmount = gameSession.TotalJackpotAmount,
-                    IsJackpot = gameSession.IsJackpot
-                };
-                await _clientMessageSender.SendGameState(client, gameState);
             }
             catch (Exception ex)
             {
@@ -141,35 +138,28 @@ namespace MC_server.GameRoom.Handlers
                 int roomId = _clientManager.GetUserRoomId(client);
                 var gameUser = _clientManager.GetGameUser(client);
                 var gameSession = _gameRoomManager.GetGameSession(roomId);
-                var newPayout = GameUserStateUtils.CalculatePayout(gameUser, gameSession);
                 
                 // 유저의 코인 수 변경
                 var updatedUser = await _userTcpService.UpdateUserAsync(gameUser.UserId, "coins", -betRequest.BetAmount);
 
                 if (updatedUser != null)
                 { 
-                    lock (_sessionLock) // GameSession 업데이트 보호
+                    lock (GetRoomLock(roomId)) // GameSession 업데이트 보호
                     {
                         // 배팅 처리
-                        _clientManager.UpdateGameUser(client, "currentPayout", newPayout); // 해당 유저의 페이아웃 재계산
+                        _clientManager.UpdateGameUser(client, "betCount", 1); // 해당 유저의 베팅 횟수 증가
                         _clientManager.UpdateGameUser(client, "userTotalBetAmount", betRequest.BetAmount);// 배팅한 게임 유저의 총 배팅 금액을 수정
                         _clientManager.UpdateGameUser(client, "userSessionBetAmount", betRequest.BetAmount);// 배팅한 게임 유저의 총 배팅 금액을 수정
                         gameSession.TotalBetAmount += betRequest.BetAmount; // 해당 룸의 총 배팅 금액 변경
-                        gameSession.TotalJackpotAmount += (long)Math.Round(betRequest.BetAmount * 0.1); // 배팅 금액의 10%만큼 잭팟 금액에 누적
+
+                        // 페이아웃 및 잭팟 확률 계산
+                        _clientManager.UpdatePayout(client, gameSession);
+                        _clientManager.UpdateJackpotProb(client);
                     }
 
                     // 요청 클라이언트에게 응답 전송
                     await _clientMessageSender.SendBetResponse(client, new BetResponse { UpdatedCoins = updatedUser.Coins });
                 }
-
-                var gameState = new GameState
-                {
-                    TotalJackpotAmount = gameSession.TotalJackpotAmount,
-                    IsJackpot = gameSession.IsJackpot
-                };
-
-                // 변경된 세션 데이터 브로드캐스트
-                await _broadcastMessageSender.BroadcastGameState(roomId, gameState);
 
                 // 변경된 게임 유저 상태 브로드캐스트
                 await _broadcastMessageSender.BroadcastUserState(roomId);

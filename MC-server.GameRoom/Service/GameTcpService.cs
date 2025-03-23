@@ -47,7 +47,6 @@ namespace MC_server.GameRoom.Service
 
                 existingGameRecord.TotalBetAmount = gameSession.TotalBetAmount;
                 existingGameRecord.TotalUser = gameSession.TotalUser;
-                existingGameRecord.TotalJackpotAmount = gameSession.TotalJackpotAmount;
                 existingGameRecord.IsJackpot = gameSession.IsJackpot;
 
                 await dbContext.SaveChangesAsync();

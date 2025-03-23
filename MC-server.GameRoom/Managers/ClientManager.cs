@@ -6,7 +6,7 @@ using MC_server.GameRoom.Utils;
 using MC_server.GameRoom.Service;
 using MC_server.GameRoom.Models;
 using MC_server.GameRoom.Communication;
-using MC_server.Core.Models;
+using MC_server.GameRoom.Enum;
 
 namespace MC_server.GameRoom.Managers
 {
@@ -40,12 +40,13 @@ namespace MC_server.GameRoom.Managers
             {
                 UserId = userId,
                 RoomId = roomId,
+                BetCount = 0,
                 CurrentPayout = 0.0M,
                 InitialCoins = user.Coins,
                 UserTotalProfit = 0,
                 UserTotalBetAmount = 0,
                 UserSessionBetAmount = 0,
-                JackpotProb = 0.1M
+                JackpotProb = 0.0M
             };
 
             // _clientStates에 동일한 TcpClient 키를 덮어쓸 경우 예기치 않은 동작이 발생할 수 있어 메서드를 통한 추가
@@ -58,7 +59,6 @@ namespace MC_server.GameRoom.Managers
         {
             Console.WriteLine($"[socket] Client disconnected: {client.Client.RemoteEndPoint}");
             _clientStates.TryRemove(client, out _);
-            Console.WriteLine($"Socket object size: {_clientStates.Count}");
         }
 
         public Dictionary<string, object> UpdateGameUser(TcpClient client, string property, object value)
@@ -69,12 +69,22 @@ namespace MC_server.GameRoom.Managers
 
                 switch (property)
                 {
+                    case "betCount":
+                        if (value is int count)
+                        {
+                            gameUser.BetCount += count;
+                            updatedData["betCount"] = gameUser.BetCount;
+                        }
+                        else
+                        {
+                            throw new ArgumentException("Invalid value type for CurrentPayout.");
+                        }
+                        break;
                     case "currentPayout":
                         if (value is decimal newPayout)
                         {
                             gameUser.CurrentPayout = newPayout;
                             updatedData["currentPayout"] = gameUser.CurrentPayout;
-                            Console.WriteLine($"[socket] Updated CurrentPayout for user to {gameUser.CurrentPayout}");
                         }
                         else
                         {
@@ -86,7 +96,6 @@ namespace MC_server.GameRoom.Managers
                         {
                             gameUser.UserTotalProfit += addCoinsAmount;
                             updatedData["userTotalProfit"] = gameUser.UserTotalProfit;
-                            Console.WriteLine($"[socket] Updated UserTotalProfit for user to {gameUser.UserTotalProfit}");
                         }
                         else
                         {
@@ -98,7 +107,6 @@ namespace MC_server.GameRoom.Managers
                         {
                             gameUser.UserTotalBetAmount += betAmount;
                             updatedData["userTotalBetAmount"] = gameUser.UserTotalBetAmount;
-                            Console.WriteLine($"[socket] Updated UserTotalBetAmount for user to {gameUser.UserTotalBetAmount}");
                         }
                         else
                         {
@@ -110,7 +118,6 @@ namespace MC_server.GameRoom.Managers
                         {
                             gameUser.UserSessionBetAmount += sessionBetAmount;
                             updatedData["userSessionBetAmount"] = gameUser.UserSessionBetAmount;
-                            Console.WriteLine($"[socket] Updated UserSessionBetAmount for user to {gameUser.UserSessionBetAmount}");
                         }
                         else
                         {
@@ -122,7 +129,6 @@ namespace MC_server.GameRoom.Managers
                         {
                             gameUser.JackpotProb = newJackpotProb;
                             updatedData["jackpotProb"] = gameUser.JackpotProb;
-                            Console.WriteLine($"[socket] Updated JackpotProb for user to {gameUser.JackpotProb}");
                         }
                         else
                         {
@@ -131,7 +137,7 @@ namespace MC_server.GameRoom.Managers
                         break;
                     default:
                         throw new ArgumentException($"Property '{property}' is not a valid GameUserState property.");
-                }
+                    }
 
                 return updatedData;
             }
@@ -141,7 +147,7 @@ namespace MC_server.GameRoom.Managers
             }
         }
 
-        public async Task ResetGameUser(TcpClient client, GameSession gameSession)
+        public async Task ResetGameUser(TcpClient client, GameSession gameSession, ResetLevel level)
         {
 
             if (_clientStates.TryGetValue(client, out var gameUser))
@@ -153,10 +159,35 @@ namespace MC_server.GameRoom.Managers
                 gameUser.UserTotalProfit = 0;
                 gameUser.UserTotalBetAmount = 0;
                 gameUser.UserSessionBetAmount = 0;
-                gameUser.JackpotProb = 0.1M;
+
+                // 베팅 횟수, 잭팟 확률은 하드 리셋일 때만 초기화
+                if (level == ResetLevel.Hard)
+                {
+                    gameUser.BetCount = 0;
+                    gameUser.JackpotProb = 0.0M;
+                }
 
                 var newPayout = GameUserStateUtils.CalculatePayout(gameUser, gameSession);
                 UpdateGameUser(client, "currentPayout", newPayout);
+            }
+        }
+
+        public void UpdatePayout(TcpClient client, GameSession gameSession)
+        {
+            if (_clientStates.TryGetValue(client, out var gameUser))
+            {
+                var newPayout = GameUserStateUtils.CalculatePayout(gameUser, gameSession);
+                UpdateGameUser(client, "currentPayout", newPayout);
+            }
+        }
+
+        public void UpdateJackpotProb(TcpClient client)
+        {
+            if (_clientStates.TryGetValue(client, out var gameUser))
+            {
+                var newJackpotProb = GameUserStateUtils.CalculateJackpotProb(gameUser);
+                Console.WriteLine($"newJackpotProb: {newJackpotProb}");
+                UpdateGameUser(client, "jackpotProb", newJackpotProb);
             }
         }
 

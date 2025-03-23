@@ -6,6 +6,8 @@
 
         public int RoomId { get; set; }
 
+        public int BetCount { get; set; }
+
         public decimal CurrentPayout { get; set; }
         
         public long InitialCoins { get; set; }

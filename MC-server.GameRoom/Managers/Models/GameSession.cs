@@ -8,8 +8,6 @@
 
         public int TotalUser { get; set; }
 
-        public long TotalJackpotAmount { get; set; }
-
         public bool IsJackpot { get; set; }
 
         public decimal TargetPayout { get; set; }
@@ -17,8 +15,6 @@
         public long MaxBetAmount { get; set; }
 
         public int MaxUser { get; set; }
-
-        public long BaseJackpotAmount { get; set; }
 
         public DateTime CreatedAt { get; set; }
     }

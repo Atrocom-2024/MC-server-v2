@@ -11,5 +11,10 @@ namespace MC_server.GameRoom.Utils
 
             return part_A / 2;
         }
+
+        public static decimal CalculateJackpotProb(GameUser gameUser)
+        {
+            return (decimal)gameUser.BetCount / 300;
+        }
     }
 }

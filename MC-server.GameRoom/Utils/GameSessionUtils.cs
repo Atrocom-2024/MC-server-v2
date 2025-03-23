@@ -13,12 +13,10 @@ namespace MC_server.GameRoom.Utils
                 GameId = PublicUtils.GenerateRandomString(20),
                 TotalBetAmount = 0,
                 TotalUser = 0,
-                TotalJackpotAmount = room.BaseJackpotAmount,
                 IsJackpot = false,
                 TargetPayout = room.TargetPayout,
                 MaxBetAmount = room.MaxBetAmount,
                 MaxUser = room.MaxUser,
-                BaseJackpotAmount = room.BaseJackpotAmount,
                 CreatedAt = DateTime.UtcNow
             };
         }
