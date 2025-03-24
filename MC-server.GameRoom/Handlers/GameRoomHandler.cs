@@ -6,6 +6,8 @@ using MC_server.GameRoom.Service;
 using MC_server.GameRoom.Utils;
 using MC_server.GameRoom.Communication;
 using System.Collections.Concurrent;
+using MC_server.GameRoom.Enum;
+using MC_server.GameRoom.Managers.Models;
 
 namespace MC_server.GameRoom.Handlers
 {
@@ -207,6 +209,7 @@ namespace MC_server.GameRoom.Handlers
                 var userInfo = _clientManager.GetGameUser(client);
                 var updatedUser = await _userTcpService.UpdateUserAsync(userInfo.UserId, "coins", jackpotWinRequest.JackpotWinCoins);
                 var roomId = _clientManager.GetUserRoomId(client);
+                var gameSession = _gameRoomManager.GetGameSession(roomId);
 
                 // 존재하지 않는 유저라면 에러 메시지 전송
                 if (updatedUser == null)
@@ -214,6 +217,9 @@ namespace MC_server.GameRoom.Handlers
                     await _clientMessageSender.SendErrorResponse(client, "JackpotWinResponse", "User not found");
                     return;
                 }
+
+                // 잭팟이 터진 유저는 하드 리셋
+                await _clientManager.ResetGameUser(client, gameSession, ResetLevel.Hard);
 
                 // 성공 응답 처리
                 await _clientMessageSender.SendJackpotWinResponse(client, new JackpotWinResponse { AddedCoinsAmount = updatedUser.Coins });
