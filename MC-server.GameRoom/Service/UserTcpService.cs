@@ -35,6 +35,10 @@ namespace MC_server.GameRoom.Service
                         // 코인 업데이트
                         if (value is int coinAmount)
                         {
+                            if (user.Coins + coinAmount < 0)
+                            {
+                                break;
+                            }
                             user.Coins += coinAmount;
                             Console.WriteLine($"[socket] Updated coins for user to {user.Coins}");
                         }
